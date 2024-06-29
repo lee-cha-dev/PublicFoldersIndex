@@ -1,0 +1,73 @@
+'The Private subs go in ThisOutlookSession
+'declare this object withEvents displaying all the events
+'might need to access library "Microsoft Excel 16.0 Object Library"
+
+Private WithEvents olRemind As Outlook.Reminders
+
+Private Sub Application_Reminder(ByVal Item As Object)
+
+Set olRemind = Outlook.Reminders
+
+If Item.MessageClass <> "IPM.Appointment" Then
+    Exit Sub
+End If
+
+' Check if the reminder item is an Appointment
+If TypeOf Item Is Outlook.AppointmentItem Then
+    Set olAppt = Item
+    
+    ' Check if the Appointment's subject is "Run Test Macro"
+    If olAppt.Subject = "Run Test Macro" Then
+        ' Call your macro (replace 'Test' with your actual macro name)
+        Call Test
+    End If
+    If olAppt.Subject = "Testing 2" Then
+        Call Test2
+    End If
+    If olAppt.Subject = "Start Public Index Macro" Then
+        Call IndexPublicFolders
+    End If
+    If olAppt.Subject = "Start Global Address Macro" Then
+        Call ExportOfflineGALContacts
+    End If
+End If
+
+' Call Test ' your macros name goes here
+
+End Sub
+
+Private Sub olRemind_BeforeReminderShow(Cancel As Boolean)
+
+'This is to dismiss the reminder
+
+For Each objRem In olRemind
+        If objRem.Caption = "Run Test Macro" Then
+            If objRem.IsVisible Then
+                objRem.Dismiss
+                Cancel = True
+            End If
+            Exit For
+        End If
+        If objRem.Caption = "Testing 2" Then
+            If objRem.IsVisible Then
+                objRem.Dismiss
+                Cancel = True
+            End If
+            Exit For
+        End If
+        If objRem.Caption = "Start Public Index Macro" Then
+            If objRem.IsVisible Then
+                objRem.Dismiss
+                Cancel = True
+            End If
+            Exit For
+        End If
+        If objRem.Caption = "Start Global Address Macro" Then
+            If objRem.IsVisible Then
+                objRem.Dismiss
+                Cancel = True
+            End If
+            Exit For
+        End If
+    Next objRem
+End Sub

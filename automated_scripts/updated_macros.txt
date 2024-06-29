@@ -1,0 +1,439 @@
+Sub Test()
+    ' Your macro code goes here
+    ' Example:
+    MsgBox "Test macro triggered!"
+End Sub
+
+Sub Test2()
+    ' Your macro code goes here
+    ' Example:
+    MsgBox "Test2 macro triggered!"
+End Sub
+
+Function FindFolder(folders As Outlook.folders, folderName As String) As Outlook.folder
+    Dim fld As Outlook.folder
+    Dim subFld As Outlook.folder
+    Dim olFoldersQueue As Collection
+    Dim olCurrentFolder As Outlook.folder
+    Dim olSubFolder As Outlook.folder
+
+    ' Initialize the collection for folder queue
+    Set olFoldersQueue = New Collection
+
+    ' Initialize the queue with the top-level folders
+    For Each fld In folders
+        olFoldersQueue.Add fld
+    Next fld
+
+    ' Process folders in the queue
+    While olFoldersQueue.Count > 0
+        ' Get the next folder from the queue
+        Set olCurrentFolder = olFoldersQueue(1)
+        olFoldersQueue.Remove 1
+
+        ' Check if the current folder is the one we are looking for
+        If olCurrentFolder.Name = folderName Then
+            Set FindFolder = olCurrentFolder
+            Exit Function
+        End If
+
+        ' Add the subfolders of the current folder to the queue
+        For Each olSubFolder In olCurrentFolder.folders
+            olFoldersQueue.Add olSubFolder
+        Next olSubFolder
+    Wend
+
+    ' If the folder is not found
+
+    Set FindFolder = Nothing
+End Function
+
+Sub FindMissingFolder()
+    Dim olApp As Outlook.Application
+    Dim olNs As Outlook.NameSpace
+    Dim olFolder As Outlook.folder
+    Dim strFolderName As String
+    Dim strFolderPath As String
+
+    ' Initialize Outlook application and namespace
+    Set olApp = Outlook.Application
+    Set olNs = olApp.GetNamespace("MAPI")
+
+    ' Prompt the user to enter the folder name
+    strFolderName = InputBox("Please enter the folder name to search for:")
+
+    ' Check if the folder name is blank
+    If strFolderName = "" Then
+        MsgBox "Folder name cannot be blank. Exiting."
+        Exit Sub
+    End If
+
+    ' Search for the folder
+    Set olFolder = FindFolder(olNs.folders, strFolderName)
+    If Not olFolder Is Nothing Then
+        strFolderPath = olFolder.FolderPath
+        MsgBox "The folder path is: " & strFolderPath
+    Else
+        MsgBox "Folder not found."
+    End If
+End Sub
+
+Function FindFolderRecursion(folders As Outlook.folders, folderName As String) As Outlook.folder
+    Dim fld As Outlook.folder
+    Dim subFld As Outlook.folder
+   
+    For Each fld In folders
+        If fld.Name = folderName Then
+            Set FindFolderRecursion = fld
+            Exit Function
+        Else
+            Set subFld = FindFolderRecursion(fld.folders, folderName)
+            If Not subFld Is Nothing Then
+                Set FindFolderRecursion = subFld
+                Exit Function
+            End If
+        End If
+    Next
+    Set FindFolderRecursion = Nothing
+End Function
+
+Sub FindMissingFolderRecursion()
+     Dim olApp As Outlook.Application
+     Dim olNs As Outlook.NameSpace
+     Dim olFolder As Outlook.folder
+     Dim strFolderName As String
+     Dim strFolderPath As String
+    
+     Set olApp = Outlook.Application
+     Set olNs = olApp.GetNamespace("MAPI")
+     
+     ' Prompt the user to enter the folder name
+     strFolderName = InputBox("Please enter the folder name to search for:")
+    
+     ' Check if the folder name is blank
+     If strFolderName = "" Then
+         MsgBox "Folder name cannot be blank. Exiting."
+         Exit Sub
+     End If
+    
+     Set olFolder = FindFolderRecursion(olNs.folders, strFolderName)
+     If Not olFolder Is Nothing Then
+         strFolderPath = olFolder.FolderPath
+         MsgBox "The folder path is: " & strFolderPath
+     Else
+         MsgBox "Folder not found."
+     End If
+End Sub
+
+'==========================================================================================================================================================
+
+' Include reference to Microsoft Scripting Runtime for using Dictionary
+' Go to Tools -> References -> Check "Microsoft Scripting Runtime"
+
+Sub IndexPublicFolders()
+    Dim olApp As Outlook.Application
+    Dim olNs As Outlook.NameSpace
+    Dim olPublicFolders As Outlook.folder
+    Dim fso As Object
+    Dim objTextFile As Object
+    Dim docsFolder As String
+    Dim filePath As String
+    Dim writtenPaths As Object ' Collection to store written paths for duplicate checking
+    
+    ' Initialize Outlook application and namespace
+    Set olApp = Outlook.Application
+    Set olNs = olApp.GetNamespace("MAPI")
+    
+    ' Get the top-level public folders
+    On Error Resume Next
+    Set olPublicFolders = olNs.folders("Public Folders - KCharles@uams.edu")
+    On Error GoTo 0
+    
+    If olPublicFolders Is Nothing Then
+        MsgBox "Public Folders not found.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Initialize FileSystemObject
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    
+    ' Get the path to user's documents folder
+    docsFolder = "C:\Users\charleskristopher\documents\"   ' Modify this path as per your requirement
+    
+    ' Specify the file path and name
+    filePath = docsFolder & "PublicFoldersIndex.txt"
+    
+    ' Open the text file for writing
+    On Error Resume Next
+    Set objTextFile = fso.CreateTextFile(filePath, True)
+    If objTextFile Is Nothing Then
+        MsgBox "Failed to create the text file. Please check the path and try again.", vbExclamation
+        Exit Sub
+    End If
+    On Error GoTo 0
+    
+    ' Initialize the collection to store written paths
+    Set writtenPaths = CreateObject("Scripting.Dictionary")
+    
+    ' Index and write all public folders recursively
+    Call IndexPublicFoldersRecursively(olPublicFolders, objTextFile, "", writtenPaths)
+    
+    ' Close the text file
+    objTextFile.Close
+    
+    ' Inform user about the file save
+    MsgBox "Public folders index saved to: " & vbCrLf & filePath, vbInformation, "Index Saved"
+End Sub
+
+Sub IndexPublicFoldersRecursively(folder As Outlook.folder, objTextFile As Object, currentPath As String, writtenPaths As Object)
+    Dim subfolder As Outlook.folder
+    Dim fullPath As String
+    Dim counter As Integer
+    
+    For Each subfolder In folder.folders
+        counter = 0
+        fullPath = IIf(Len(currentPath) > 0, currentPath & "\", "") & subfolder.Name
+        Do While writtenPaths.Exists(fullPath)
+            counter = counter + 1
+            fullPath = IIf(Len(currentPath) > 0, currentPath & "\", "") & subfolder.Name & " (" & counter & ")"
+        Loop
+        
+        ' Write the current path to the file
+        objTextFile.WriteLine fullPath
+        
+        ' Add the path to the collection
+        writtenPaths.Add fullPath, True
+        
+        ' Recursively index subfolders
+        Call IndexPublicFoldersRecursively(subfolder, objTextFile, fullPath, writtenPaths)
+    Next
+End Sub
+'==========================================================================================================================================================
+
+Sub WritePathsToFile(obj As Object, objFile As Object, currentPath As String)
+    Dim key As Variant
+    
+    For Each key In obj.Keys
+        If IsObject(obj(key)) Then
+            ' Recursively write nested object paths
+            WritePathsToFile obj(key), objFile, key
+        Else
+            ' Write the current path to the file
+            objFile.WriteLine currentPath & "\" & key
+        End If
+    Next
+End Sub
+
+Function GetUserTypeString(userType As OlAddressEntryUserType) As String
+    Select Case userType
+        Case olExchangeUserAddressEntry
+            GetUserTypeString = "Exchange User"
+        Case olExchangeDistributionListAddressEntry
+            GetUserTypeString = "Exchange Distribution List"
+        Case olExchangePublicFolderAddressEntry
+            GetUserTypeString = "Exchange Public Folder"
+        Case olExchangeAgentAddressEntry
+            GetUserTypeString = "Exchange Agent"
+        Case olExchangeOrganizationAddressEntry
+            GetUserTypeString = "Exchange Organization"
+        Case olExchangeRemoteUserAddressEntry
+            GetUserTypeString = "Exchange Remote User"
+        Case olOutlookContactAddressEntry
+            GetUserTypeString = "Outlook Contact"
+        Case olOutlookDistributionListAddressEntry
+            GetUserTypeString = "Outlook Distribution List"
+        Case Else
+            GetUserTypeString = "Other"
+    End Select
+End Function
+
+
+
+Sub ExportOfflineGALContacts()
+
+    Dim olApp As Outlook.Application
+    Dim olNamespace As Outlook.NameSpace
+    Dim olAddressList As Outlook.AddressList
+    Dim olEntries As Outlook.AddressEntries
+    Dim olEntry As Outlook.AddressEntry
+    Dim objFSO As Object
+    Dim objTextFile As Object
+    Dim strFilePath As String
+    Dim strFileName As String
+    Dim i As Long
+    
+    ' Specify the file path and name
+    strFilePath = "path\to\save\file"   ' Modify this path as per your requirement
+    strFileName = "OfflineGALContacts.txt"
+    
+    ' Check if the specified directory exists
+    If Dir(strFilePath, vbDirectory) = "" Then
+        MsgBox "The specified directory does not exist: " & vbCrLf & strFilePath, vbExclamation
+        Exit Sub
+    End If
+    
+    ' Initialize Outlook
+    On Error Resume Next
+    Set olApp = Outlook.Application
+    If olApp Is Nothing Then
+        MsgBox "Outlook is not running. Please start Outlook and try again.", vbExclamation
+        Exit Sub
+    End If
+    On Error GoTo 0
+    
+    Set olNamespace = olApp.GetNamespace("MAPI")
+    
+    ' Attempt to find the Offline Global Address List
+    Dim addressListName As String
+    Dim foundAddressList As Boolean
+    foundAddressList = False
+    
+    ' First try to find by exact name
+    addressListName = "Offline Global Address List"
+    On Error Resume Next
+    Set olAddressList = olNamespace.AddressLists(addressListName)
+    If Not olAddressList Is Nothing Then
+        foundAddressList = True
+    End If
+    On Error GoTo 0
+    
+    ' If not found, try with email address appended
+    If Not foundAddressList Then
+        addressListName = "Offline Global Address List - " & olApp.Session.CurrentUser.AddressEntry.GetExchangeUser.PrimarySmtpAddress
+        On Error Resume Next
+        Set olAddressList = olNamespace.AddressLists(addressListName)
+        If Not olAddressList Is Nothing Then
+            foundAddressList = True
+        End If
+        On Error GoTo 0
+    End If
+    
+    ' If address list still not found, show message and exit
+    If Not foundAddressList Then
+        MsgBox "Offline Global Address List not found. Ensure it is synchronized and try again.", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Open the text file for writing
+    Set objFSO = CreateObject("Scripting.FileSystemObject")
+    On Error Resume Next
+    Set objTextFile = objFSO.CreateTextFile(strFilePath & strFileName, True)
+    If objTextFile Is Nothing Then
+        MsgBox "Failed to create the text file. Please check the path and try again.", vbExclamation
+        Exit Sub
+    End If
+    On Error GoTo 0
+    
+   ' Loop through each entry in the Offline GAL
+    Set olEntries = olAddressList.AddressEntries
+    For i = 1 To olEntries.Count
+        Set olEntry = olEntries.Item(i)
+    
+        ' Get the name and email address for all entry types
+        Select Case olEntry.AddressEntryUserType
+            Case olExchangeUserAddressEntry
+                objTextFile.WriteLine "Name: " & olEntry.Name
+                objTextFile.WriteLine "Email: " & olEntry.GetExchangeUser.PrimarySmtpAddress
+            Case olExchangeDistributionListAddressEntry
+                Dim distListName As String
+                distListName = olEntry.GetExchangeDistributionList.Alias
+                
+                If InStr(1, distListName, ".email", vbTextCompare) > 0 Then
+                    ' Attempt to get another name for it
+                    distListName = olEntry.Name ' or any other logic to get a different name
+                End If
+                objTextFile.WriteLine "Name: " & distListName
+                objTextFile.WriteLine "Email: " & olEntry.GetExchangeDistributionList.PrimarySmtpAddress
+            Case olOutlookContactAddressEntry
+                objTextFile.WriteLine "Name: " & olEntry.Name
+                objTextFile.WriteLine "Email: " & olEntry.GetContact.PrimarySmtpAddress
+            Case olExchangePublicFolderAddressEntry
+                'PUBLIC FOLDERS START RIGHT HERE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                objTextFile.WriteLine "Name: " & olEntry.Name
+    
+                Dim smtpAddress As String
+                Dim propNames(2) As String
+                Dim propValues As Variant
+                Dim j As Long
+                
+                propNames(0) = "http://schemas.microsoft.com/mapi/proptag/0x3001001E"  ' PR_DISPLAY_NAME
+                propNames(1) = "http://schemas.microsoft.com/mapi/proptag/0x39FE001E"  ' PR_SMTP_ADDRESS
+                propNames(2) = "http://schemas.microsoft.com/mapi/proptag/0x3A151E"   ' PR_TRANSMITABLE_DISPLAY_NAME
+                
+                On Error Resume Next
+                propValues = olEntry.PropertyAccessor.GetProperties(propNames)
+                On Error GoTo 0
+                
+                If Not IsEmpty(propValues) Then
+                    smtpAddress = CStr(propValues(1))  ' PR_SMTP_ADDRESS is the second property in propNames array
+                Else
+                    smtpAddress = "SMTP address not found"
+                End If
+                
+                objTextFile.WriteLine "Email: " & smtpAddress
+            Case Else
+                Dim entryName As String
+                Dim entryEmail As String
+                On Error Resume Next
+                entryName = olEntry.Name
+                If Err.Number <> 0 Then
+                    entryName = "name unavailable"
+                    Err.Clear
+                End If
+                
+                entryEmail = olEntry.Address
+                If Err.Number <> 0 Or InStr(1, entryEmail, "/") > 0 Then
+                    ' Try to get the SMTP address if it's an X.500 address
+                    entryEmail = olEntry.Address
+                    'entryEmail = olEntry.GetExchangeUser.Name
+                    If Not olEntry.GetExchangeUser Is Nothing Then
+                        entryEmail = olEntry.GetExchangeUser.PrimarySmtpAddress
+                    ElseIf Not olEntry.GetContact Is Nothing Then
+                        entryEmail = olEntry.GetContact.PrimarySmtpAddress
+                    ElseIf Not olEntry.GetExchangeDistributionList Is Nothing Then
+                        entryEmail = olEntry.GetExchangeDistributionList.PrimarySmtpAddress
+                    End If
+                    Err.Clear
+                        If Err.Number <> 0 Or InStr(1, entryEmail, "/") > 0 Then
+                            'Dim smtpAddress As String
+                            Dim propNamesEntry(2) As String
+                            Dim propValuesEntry As Variant
+                            'Dim jEntry As Long
+                            
+                            propNamesEntry(0) = "http://schemas.microsoft.com/mapi/proptag/0x3001001E"  ' PR_DISPLAY_NAME
+                            propNamesEntry(1) = "http://schemas.microsoft.com/mapi/proptag/0x39FE001E"  ' PR_SMTP_ADDRESS
+                            propNamesEntry(2) = "http://schemas.microsoft.com/mapi/proptag/0x3A151E"   ' PR_TRANSMITABLE_DISPLAY_NAME
+                            
+                            On Error Resume Next
+                            propValuesEntry = olEntry.PropertyAccessor.GetProperties(propNamesEntry)
+                            On Error GoTo 0
+                            
+                            If Not IsEmpty(propValues) Then
+                                entryEmail = CStr(propValuesEntry(1))  ' PR_SMTP_ADDRESS is the second property in propNames array
+                            Else
+                                entryEmail = "SMTP address not found"
+                            End If
+                        End If
+                        Err.Clear
+                End If
+                On Error GoTo 0
+                objTextFile.WriteLine "Name: " & entryName
+                objTextFile.WriteLine "Email: " & entryEmail
+                'objTextFile.WriteLine "User Type: " & GetUserTypeString(olEntry.AddressEntryUserType)
+            End Select
+        objTextFile.WriteLine "----------------------------------------"
+    Next i
+    
+    ' Close the text file
+    objTextFile.Close
+    
+    ' Release Outlook objects
+    Set olEntry = Nothing
+    Set olEntries = Nothing
+    Set olAddressList = Nothing
+    Set olNamespace = Nothing
+    Set olApp = Nothing
+    
+    MsgBox "Export of Offline GAL contacts completed.", vbInformation
+
+End Sub
